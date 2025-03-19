@@ -17,6 +17,11 @@ export default function Sidebar() {
             </Link>
           </li>
           <li>
+            <Link href="/admin/categories" className="block p-2 hover:bg-gray-700">
+              Categories
+            </Link>
+          </li>
+          <li>
             <Link href="/admin/orders" className="block p-2 hover:bg-gray-700">
               Orders
             </Link>

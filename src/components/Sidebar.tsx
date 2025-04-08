@@ -30,6 +30,9 @@ export default function Sidebar() {
             <Link href="/admin/users" className="block p-2 hover:bg-gray-700">
               Users
             </Link>
+            <Link href="/admin/chat" className=" block p-2 hover:bg-gray-700" >
+            Chat
+            </Link>
           </li>
         </ul>
       </nav>

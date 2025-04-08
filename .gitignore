@@ -92,3 +92,4 @@ dist/
 
 # Windows system files
 Thumbs.db
+.env.local

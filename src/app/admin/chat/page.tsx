@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import Chat from "@/components/chat";
 import { auth } from "@/lib/firebase";
 import { signInWithCustomToken } from "firebase/auth";
+import { ref, onValue } from "firebase/database";
+import { database } from "@/lib/firebase";
 
 interface ChatRoom {
   id: number;
@@ -14,6 +16,7 @@ interface ChatRoom {
   };
   room_id: string;
   created_at: string;
+  last_message_time?: string;
 }
 
 export default function AdminChatDashboard() {
@@ -21,36 +24,104 @@ export default function AdminChatDashboard() {
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastMessages, setLastMessages] = useState<Record<string, string>>({});
+
+  const fetchLastMessages = async (rooms: ChatRoom[]) => {
+    const token = localStorage.getItem("access_token");
+    if (!token) return;
+
+    try {
+      const res = await fetch("http://localhost:8000/api/chat/create-chat/", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error("Không thể tạo kết nối chat");
+      }
+
+      const data = await res.json();
+      
+      if (auth) {
+        await signInWithCustomToken(auth, data.firebase_token);
+        
+        const lastMessageTimes: Record<string, string> = {};
+        
+        rooms.forEach(room => {
+          const messagesRef = ref(database, `chat_rooms/${room.room_id}/messages`);
+          onValue(messagesRef, (snapshot) => {
+            const messages = snapshot.val();
+            if (messages) {
+              const messageIds = Object.keys(messages);
+              if (messageIds.length > 0) {
+                const lastMessageId = messageIds[messageIds.length - 1];
+                const lastMessage = messages[lastMessageId];
+                lastMessageTimes[room.room_id] = lastMessage.timestamp;
+                
+                setLastMessages(prev => ({
+                  ...prev,
+                  [room.room_id]: lastMessage.timestamp
+                }));
+              }
+            }
+          });
+        });
+      }
+    } catch (err) {
+      console.error("Error fetching last messages:", err);
+    }
+  };
 
   useEffect(() => {
     const fetchChatRooms = async () => {
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        setError("Vui lòng đăng nhập để truy cập trang này");
+        return;
+      }
+
       try {
         const res = await fetch("http://localhost:8000/api/chat/chat-rooms/", {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${token}`,
           },
         });
 
+        if (res.status === 403) {
+          setError("Bạn không có quyền truy cập trang này");
+          return;
+        }
+
         if (!res.ok) {
-          throw new Error("Không thể tải danh sách chat");
+          throw new Error(`Không thể tải danh sách chat: ${res.status}`);
         }
 
         const data = await res.json();
         setChatRooms(data);
+        
+        fetchLastMessages(data);
       } catch (err) {
         console.error("Error fetching chat rooms:", err);
-        setError("Đã xảy ra lỗi khi tải danh sách chat");
+        setError(err instanceof Error ? err.message : "Đã xảy ra lỗi khi tải danh sách chat");
       }
     };
 
     fetchChatRooms();
   }, []);
 
+  const sortedChatRooms = [...chatRooms].sort((a, b) => {
+    const timeA = lastMessages[a.room_id] || a.created_at;
+    const timeB = lastMessages[b.room_id] || b.created_at;
+    return new Date(timeB).getTime() - new Date(timeA).getTime();
+  });
+
   const handleRoomSelect = async (roomId: string) => {
     setLoading(true);
     setError(null);
     try {
-      // Lấy token Firebase cho admin
       const res = await fetch("http://localhost:8000/api/chat/create-chat/", {
         method: "POST",
         headers: {
@@ -65,7 +136,6 @@ export default function AdminChatDashboard() {
 
       const data = await res.json();
       
-      // Đăng nhập Firebase với token
       if (auth) {
         await signInWithCustomToken(auth, data.firebase_token);
         setSelectedRoom(roomId);
@@ -93,11 +163,11 @@ export default function AdminChatDashboard() {
         <div className="md:col-span-1">
           <h3 className="text-xl font-semibold mb-4 text-gray-700">Danh sách người dùng</h3>
           <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
-            {chatRooms.length === 0 ? (
+            {sortedChatRooms.length === 0 ? (
               <p className="p-6 text-gray-500 text-center">Không có người dùng nào</p>
             ) : (
               <ul className="divide-y divide-gray-200">
-                {chatRooms.map((room) => (
+                {sortedChatRooms.map((room) => (
                   <li
                     key={room.id}
                     onClick={() => handleRoomSelect(room.room_id)}
@@ -110,7 +180,9 @@ export default function AdminChatDashboard() {
                     <div className="font-medium text-gray-800">{room.user.username}</div>
                     <div className="text-sm text-gray-600">{room.user.email}</div>
                     <div className="text-xs text-gray-400 mt-2">
-                      Tạo: {new Date(room.created_at).toLocaleString()}
+                      {lastMessages[room.room_id] 
+                        ? `Tin nhắn cuối: ${new Date(lastMessages[room.room_id]).toLocaleString()}`
+                        : `Tạo: ${new Date(room.created_at).toLocaleString()}`}
                     </div>
                   </li>
                 ))}

@@ -7,6 +7,8 @@ import { useRouter, usePathname } from "next/navigation";
 import Providers from "./providers";  
 import "./globals.css";
 import ChatButton from "@/components/ChatButton";
+import { Toaster } from 'react-hot-toast';
+import CategoryNav from "@/components/CategoryNav";
 
 const isLoggedIn = () => {
   if (typeof window === "undefined") return false;
@@ -16,6 +18,7 @@ const isLoggedIn = () => {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const [loggedIn, setLoggedIn] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false); 
+  const [searchTerm, setSearchTerm] = useState('');
   const router = useRouter();
   const pathname = usePathname();
 
@@ -48,6 +51,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     localStorage.removeItem("user");
     setLoggedIn(false);
     router.push("/");
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchTerm.trim()) {
+      router.push(`/products?search=${encodeURIComponent(searchTerm.trim())}`);
+    }
   };
 
   return (
@@ -97,19 +107,44 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </span>
                 </Link>
 
-                <div
+                <form
+                  onSubmit={handleSearch}
                   className={`flex-1 mx-8 transition-all duration-300 ${
                     isScrolled ? "max-w-md" : "max-w-xl"
                   }`} 
                 >
-                  <input
-                    type="text"
-                    placeholder="Tìm kiếm sản phẩm..."
-                    className={`w-full p-2 border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-300 ${
-                      isScrolled ? "p-1 text-xs" : "p-2"
-                    }`} 
-                  />
-                </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Tìm kiếm sản phẩm..."
+                      className={`w-full p-2 pr-10 border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-300 ${
+                        isScrolled ? "p-1 text-xs" : "p-2"
+                      }`} 
+                    />
+                    <button
+                      type="submit"
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                    >
+                      <svg
+                        className={`text-gray-400 hover:text-gray-600 transition-colors ${
+                          isScrolled ? "w-4 h-4" : "w-5 h-5"
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </form>
 
                 <div className="flex items-center space-x-4">
                   <Link href={loggedIn ? "/account" : "/login"}>
@@ -179,48 +214,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   )}
                 </div>
               </div>
-              <nav
-                className={`w-full bg-black transition-all duration-300 ${
-                  isScrolled ? "py-2" : "py-3"
-                }`}
-              >
-                <ul
-                  className={`flex justify-center space-x-6 text-white font-medium transition-all duration-300 ${
-                    isScrolled ? "text-sm" : "text-base"
-                  }`}
-                >
-                  <li>
-                    <Link href="/men" className="hover:text-blue-400 transition-colors">
-                      NAM
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/women" className="hover:text-blue-400 transition-colors">
-                      NỮ
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/sports" className="hover:text-blue-400 transition-colors">
-                      THỂ THAO
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/teams" className="hover:text-blue-400 transition-colors">
-                      ĐỘI TUYỂN
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/brands" className="hover:text-blue-400 transition-colors">
-                      CÁC NHÃN HIỆU
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/sale" className="text-red-500 hover:text-red-700 transition-colors">
-                      SALE SỐC
-                    </Link>
-                  </li>
-                </ul>
-              </nav>
+              <CategoryNav />
             </div>
           </header>
 
@@ -242,6 +236,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </footer>
           <ChatButton />
         </Providers>
+        <Toaster position="top-right" />
       </body>
     </html>
   );

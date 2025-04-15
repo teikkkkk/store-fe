@@ -52,7 +52,28 @@ export default function HomePage() {
         </div>
       </section>
       <section>
-        <h2 className="text-2xl font-bold text-center mb-4">TOP ÁO THỂ THAO NAM BÁN CHẠY NHẤT</h2>
+        <div className="relative mb-4">
+          <h2 className="text-2xl font-bold text-center">TOP ÁO THỂ THAO NAM BÁN CHẠY NHẤT</h2>
+          <Link 
+            href="/products" 
+            className="absolute right-0 top-1/2 -translate-y-1/2 text-blue-600 hover:text-blue-800 transition-colors duration-200 inline-flex items-center text-sm"
+          >
+            Xem tất cả
+            <svg 
+              className="w-4 h-4 ml-1" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth="2" 
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </Link>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {topProducts?.map((product: any) => (
             <Link key={product.id} href={`/product/${product.id}`}>

@@ -63,6 +63,8 @@ export default function ChatPage() {
         const userData = await userResponse.json();
         setUser(userData);
         localStorage.setItem("user", JSON.stringify(userData));
+        
+        let currentRoomId = null;
         const response = await fetch("http://localhost:8000/api/chat/get-room/", {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -70,27 +72,54 @@ export default function ChatPage() {
         });
 
         if (!response.ok) {
-          throw new Error("Failed to get chat room");
+          if (response.status === 404) {
+            const createResponse = await fetch("http://localhost:8000/api/chat/create-chat/", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+
+            if (!createResponse.ok) {
+              throw new Error("Failed to create chat room");
+            }
+
+            const createData = await createResponse.json();
+            currentRoomId = createData.room_id;
+            setRoomId(currentRoomId);
+            
+            
+            await signInWithCustomToken(auth, createData.firebase_token);
+          } else {
+            throw new Error("Failed to get chat room");
+          }
+        } else {
+          const data = await response.json();
+          if (data.room_id) {
+            currentRoomId = data.room_id;
+            setRoomId(currentRoomId);
+            const firebaseResponse = await fetch("http://localhost:8000/api/chat/token/", {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+
+            if (!firebaseResponse.ok) {
+              throw new Error("Failed to get Firebase token");
+            }
+
+            const { token: firebaseToken } = await firebaseResponse.json();
+            await signInWithCustomToken(auth, firebaseToken);
+          }
         }
 
-        const data = await response.json();
-        if (data.room_id) {
-          setRoomId(data.room_id);
-          const firebaseResponse = await fetch("http://localhost:8000/api/chat/token/", {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-
-          if (!firebaseResponse.ok) {
-            throw new Error("Failed to get Firebase token");
-          }
-
-          const { token: firebaseToken } = await firebaseResponse.json();
-          await signInWithCustomToken(auth, firebaseToken);
-          const messagesRef = ref(database, `chat_rooms/${data.room_id}/messages`);
+        // Thiết lập lắng nghe tin nhắn ngay sau khi có roomId
+        if (currentRoomId) {
+          console.log("Setting up message listener for room:", currentRoomId);
+          const messagesRef = ref(database, `chat_rooms/${currentRoomId}/messages`);
           onValue(messagesRef, (snapshot) => {
             const data = snapshot.val();
+            console.log("Received messages data:", data);
             if (data) {
               const messageList = Object.entries(data).map(([id, msg]: [string, any]) => ({
                 id,
@@ -114,6 +143,34 @@ export default function ChatPage() {
 
     checkAuth();
   }, [router]);
+
+  // Thêm useEffect riêng để lắng nghe tin nhắn khi roomId thay đổi
+  useEffect(() => {
+    if (roomId && auth.currentUser) {
+      console.log("Setting up message listener for room:", roomId);
+      const messagesRef = ref(database, `chat_rooms/${roomId}/messages`);
+      const unsubscribe = onValue(messagesRef, (snapshot) => {
+        const data = snapshot.val();
+        console.log("Received messages data:", data);
+        if (data) {
+          const messageList = Object.entries(data).map(([id, msg]: [string, any]) => ({
+            id,
+            content: msg.content,
+            sender: msg.sender,
+            timestamp: msg.timestamp,
+          }));
+          setMessages(messageList.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()));
+        } else {
+          setMessages([]);
+        }
+      });
+
+      return () => {
+        // Hủy đăng ký lắng nghe khi component unmount hoặc roomId thay đổi
+        unsubscribe();
+      };
+    }
+  }, [roomId]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();

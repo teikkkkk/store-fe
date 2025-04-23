@@ -23,6 +23,15 @@ export default function CartPage() {
   const router = useRouter();
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentInfo, setPaymentInfo] = useState({
+    full_name: '',
+    phone: '',
+    email: '',
+    address: '',
+    city: '',
+    order_note:''
+  });
 
   useEffect(() => {
     fetchCartItems();
@@ -134,6 +143,47 @@ export default function CartPage() {
     );
   };
 
+  const handleVNPayPayment = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        router.push('/auth/login');
+        return;
+      }
+      if (cartItems.length === 0) {
+        toast.error('Giỏ hàng trống');
+        return;
+      }
+      if (!paymentInfo.full_name || !paymentInfo.phone || !paymentInfo.email || !paymentInfo.address || !paymentInfo.city) {
+        toast.error('Vui lòng điền đầy đủ thông tin thanh toán');
+        return;
+      }
+
+      const response = await fetch('http://localhost:8000/api/payment/create-vnpay-payment/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          amount: calculateTotal(),
+          ...paymentInfo
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Không thể tạo thanh toán');
+      }
+
+      const data = await response.json();
+      window.location.href = data.payment_url;
+    } catch (error: any) {
+      console.error('Error creating payment:', error);
+      toast.error(error.message || 'Không thể tạo thanh toán');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -232,9 +282,114 @@ export default function CartPage() {
                   </span>
                 </div>
               </div>
-              <Button className="w-full mt-6" onClick={() => router.push('/checkout')}>
-                Thanh toán
-              </Button>
+              <div className="mt-6 space-y-4">
+                <Button className="w-full" onClick={() => router.push('/checkout')}>
+                  Thanh toán khi nhận hàng
+                </Button>
+                <Button 
+                  className="w-full bg-blue-600 hover:bg-blue-700"
+                  onClick={() => setShowPaymentForm(true)}
+                >
+                  Thanh toán qua VNPay
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {showPaymentForm && (
+        <div className="fixed inset-0 bg-white bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-8 rounded-xl w-full max-w-lg shadow-2xl border border-blue-100">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-blue-800">Thông tin thanh toán</h2>
+              <button 
+                onClick={() => setShowPaymentForm(false)}
+                className="text-blue-500 hover:text-blue-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-blue-700 mb-1">Họ tên <span className="text-red-500">*</span></label>
+                <Input
+                  value={paymentInfo.full_name}
+                  onChange={(e) => setPaymentInfo({...paymentInfo, full_name: e.target.value})}
+                  placeholder="Nhập họ tên của bạn"
+                  className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-blue-700 mb-1">Số điện thoại <span className="text-red-500">*</span></label>
+                <Input
+                  value={paymentInfo.phone}
+                  onChange={(e) => setPaymentInfo({...paymentInfo, phone: e.target.value})}
+                  placeholder="Nhập số điện thoại"
+                  className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-blue-700 mb-1">Email <span className="text-red-500">*</span></label>
+                <Input
+                  type="email"
+                  value={paymentInfo.email}
+                  onChange={(e) => setPaymentInfo({...paymentInfo, email: e.target.value})}
+                  placeholder="Nhập email của bạn"
+                  className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-blue-700 mb-1">Địa chỉ <span className="text-red-500">*</span></label>
+                <Input
+                  value={paymentInfo.address}
+                  onChange={(e) => setPaymentInfo({...paymentInfo, address: e.target.value})}
+                  placeholder="Nhập địa chỉ giao hàng"
+                  className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-blue-700 mb-1">Thành phố <span className="text-red-500">*</span></label>
+                <Input
+                  value={paymentInfo.city}
+                  onChange={(e) => setPaymentInfo({...paymentInfo, city: e.target.value})}
+                  placeholder="Nhập thành phố"
+                  className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                />
+              </div>
+              <div>
+          <label className="block text-sm font-medium text-blue-700 mb-1">Ghi chú</label>
+          <textarea
+            className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white min-h-[100px]"
+            value={paymentInfo.order_note}
+            onChange={(e) => setPaymentInfo({...paymentInfo, order_note: e.target.value})}
+            placeholder="Nhập ghi chú đơn hàng (nếu có)"
+          />
+        </div>
+              <div className="pt-4">
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-blue-700">Tổng tiền thanh toán:</span>
+                  <span className="text-xl font-bold text-blue-600">
+                    {new Intl.NumberFormat('vi-VN', {
+                      style: 'currency',
+                      currency: 'VND',
+                    }).format(calculateTotal())}
+                  </span>
+                </div>
+                <div className="flex space-x-4">
+                  <Button 
+                    className="flex-1 bg-white text-blue-700 border border-blue-200 hover:bg-blue-50"
+                    onClick={() => setShowPaymentForm(false)}
+                  >
+                    Hủy
+                  </Button>
+                  <Button 
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={handleVNPayPayment}
+                  >
+                    Tiến hành thanh toán
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

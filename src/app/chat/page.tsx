@@ -113,7 +113,6 @@ export default function ChatPage() {
           }
         }
 
-        // Thiết lập lắng nghe tin nhắn ngay sau khi có roomId
         if (currentRoomId) {
           console.log("Setting up message listener for room:", currentRoomId);
           const messagesRef = ref(database, `chat_rooms/${currentRoomId}/messages`);
@@ -144,7 +143,6 @@ export default function ChatPage() {
     checkAuth();
   }, [router]);
 
-  // Thêm useEffect riêng để lắng nghe tin nhắn khi roomId thay đổi
   useEffect(() => {
     if (roomId && auth.currentUser) {
       console.log("Setting up message listener for room:", roomId);
@@ -166,7 +164,6 @@ export default function ChatPage() {
       });
 
       return () => {
-        // Hủy đăng ký lắng nghe khi component unmount hoặc roomId thay đổi
         unsubscribe();
       };
     }

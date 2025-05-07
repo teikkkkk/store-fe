@@ -5,6 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import ReviewList from '@/components/ReviewList';
+import ReviewForm from '@/components/ReviewForm';
+import { Review } from '@/types/review';
 
 interface Product {
   id: string;
@@ -21,11 +24,57 @@ export default function ProductDetail() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [hasReviewed, setHasReviewed] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ id: string } | null>(null);
 
   useEffect(() => {
+    const fetchUserInfo = async () => {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+
+      try {
+        const response = await fetch('http://localhost:8000/api/user-info/', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          const userInfo = await response.json();
+          setCurrentUser(userInfo);
+        }
+      } catch (error) {
+        console.error('Error fetching user info:', error);
+      }
+    };
+
+    fetchUserInfo();
+  }, []);
+
+  useEffect(() => {
+    if (currentUser && reviews.length > 0) {
+      const userReview = reviews.find(review => review.user_id === currentUser.id);
+      setHasReviewed(!!userReview);
+    }
+  }, [currentUser, reviews]);
+
+  useEffect(() => {
+    if (!id || isNaN(Number(id))) {
+      toast.error('ID sản phẩm không hợp lệ');
+      router.push('/');
+      return;
+    }
+
     const fetchProduct = async () => {
       try {
         const response = await fetch(`http://localhost:8000/api/products/${id}/`);
+        if (response.status === 404) {
+          toast.error('Không tìm thấy sản phẩm');
+          router.push('/');
+          return;
+        }
         if (!response.ok) {
           throw new Error('Không thể tải thông tin sản phẩm');
         }
@@ -39,7 +88,28 @@ export default function ProductDetail() {
       }
     };
 
+    const fetchReviews = async () => {
+      try {
+        const response = await fetch(`http://localhost:8000/api/products/${id}/reviews/`);
+        if (response.status === 404) {
+          setReviews([]);
+          return;
+        }
+        if (!response.ok) {
+          throw new Error('Không thể tải đánh giá sản phẩm');
+        }
+        const data = await response.json();
+        setReviews(data);
+      } catch (error) {
+        console.error('Error fetching reviews:', error);
+        toast.error('Không thể tải đánh giá sản phẩm');
+      } finally {
+        setReviewsLoading(false);
+      }
+    };
+
     fetchProduct();
+    fetchReviews();
   }, [id]);
 
   const handleAddToCart = async () => {
@@ -50,28 +120,151 @@ export default function ProductDetail() {
         router.push('/auth/login');
         return;
       }
-
+  
       const response = await fetch('http://localhost:8000/api/cart/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`, 
+        },
+        body: JSON.stringify({
+          product_id: id,
+          quantity: quantity, 
+        }),
+      });
+  
+      if (!response.ok) {
+        throw new Error('Không thể thêm sản phẩm vào giỏ hàng');
+      }
+  
+      toast.success('Đã thêm sản phẩm vào giỏ hàng');
+      router.push('/cart');
+    } catch (error) {
+      console.error('Error adding to cart:', error);
+      toast.error('Không thể thêm sản phẩm vào giỏ hàng');
+    }
+  };
+
+  const handleReviewSubmit = async (values: { rating: number; comment: string }) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        toast.error('Vui lòng đăng nhập để đánh giá sản phẩm');
+        router.push('/auth/login'); 
+        return;
+      }
+
+      const response = await fetch(`http://localhost:8000/api/products/${id}/reviews/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          product_id: id,
-          quantity: quantity,
-        }),
+          rating: values.rating,
+          comment: values.comment,
+        }), 
       });
 
       if (!response.ok) {
-        throw new Error('Không thể thêm sản phẩm vào giỏ hàng');
+        const errorData = await response.json();
+        console.error('Server error:', errorData);
+        throw new Error(errorData.detail || 'Không thể gửi đánh giá');
       }
 
-      toast.success('Đã thêm sản phẩm vào giỏ hàng');
-      router.push('/cart');
+      toast.success('Đã gửi đánh giá thành công');
+      const reviewsResponse = await fetch(`http://localhost:8000/api/products/${id}/reviews/`);
+      const newReviews = await reviewsResponse.json();
+      setReviews(newReviews);
     } catch (error) {
-      console.error('Error adding to cart:', error);
-      toast.error('Không thể thêm sản phẩm vào giỏ hàng');
+      console.error('Error submitting review:', error);
+      toast.error(error instanceof Error ? error.message : 'Không thể gửi đánh giá');
+    }
+  };
+
+  const handleEditReview = async (reviewId: string, values: { rating: number; comment: string }) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        toast.error('Vui lòng đăng nhập để chỉnh sửa đánh giá');
+        router.push('/auth/login');
+        return;
+      }
+
+      // Kiểm tra xem review có tồn tại không
+      const reviewExists = reviews.find(review => review.id === reviewId);
+      if (!reviewExists) {
+        toast.error('Không tìm thấy đánh giá này');
+        return;
+      }
+
+      const response = await fetch(`http://localhost:8000/api/products/${id}/reviews/${reviewId}/edit/`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(values),
+      });
+
+      if (response.status === 404) {
+        toast.error('Không tìm thấy đánh giá này');
+        return;
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Không thể chỉnh sửa đánh giá');
+      }
+
+      toast.success('Đã chỉnh sửa đánh giá thành công');
+      const reviewsResponse = await fetch(`http://localhost:8000/api/products/${id}/reviews/`);
+      const newReviews = await reviewsResponse.json();
+      setReviews(newReviews);
+    } catch (error) {
+      console.error('Error editing review:', error);
+      toast.error(error instanceof Error ? error.message : 'Không thể chỉnh sửa đánh giá');
+    }
+  };
+
+  const handleDeleteReview = async (reviewId: string) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        toast.error('Vui lòng đăng nhập để xóa đánh giá');
+        router.push('/auth/login');
+        return;
+      }
+
+      // Kiểm tra xem review có tồn tại không
+      const reviewExists = reviews.find(review => review.id === reviewId);
+      if (!reviewExists) {
+        toast.error('Không tìm thấy đánh giá này');
+        return;
+      }
+
+      const response = await fetch(`http://localhost:8000/api/products/${id}/reviews/${reviewId}/delete/`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.status === 404) {
+        toast.error('Không tìm thấy đánh giá này');
+        return;
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Không thể xóa đánh giá');
+      }
+
+      toast.success('Đã xóa đánh giá thành công');
+      setReviews(reviews.filter(review => review.id !== reviewId));
+    } catch (error) {
+      console.error('Error deleting review:', error);
+      toast.error(error instanceof Error ? error.message : 'Không thể xóa đánh giá');
     }
   };
 
@@ -156,6 +349,28 @@ export default function ProductDetail() {
           </div>
         </div>
       </div>
+      
+      <div className="mt-16 space-y-8">
+        <div className="border-t pt-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Đánh giá sản phẩm</h2>
+          <ReviewForm 
+            onSubmit={handleReviewSubmit} 
+            hasReviewed={hasReviewed}
+          />
+        </div>
+        
+        <div className="border-t pt-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">
+            Tất cả đánh giá ({reviews.length})
+          </h2>
+          <ReviewList 
+            reviews={reviews} 
+            loading={reviewsLoading}
+            onEdit={handleEditReview}
+            onDelete={handleDeleteReview}
+          />
+        </div>
+      </div>
     </div>
   );
-} 
+}
